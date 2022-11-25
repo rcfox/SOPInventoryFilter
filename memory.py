@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import struct
 import textwrap
 from collections import defaultdict
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
-from typing import ClassVar, Dict, Tuple, List, Optional
+from typing import cast, ClassVar, Dict, Tuple, List, Optional
 from pprint import pprint, pformat
 
 from config import Config
@@ -16,16 +18,16 @@ import pymem
 class Effect:
     effect_id: int
     raw_amount: int
-    unknown1: Tuple[int, int, int, int]
+    unknown1: Tuple[int, ...]
     affinity_level: int
     affinity_type: int
-    unknown2: Tuple[int, int, int, int, int, int, int, int, int, int]
+    unknown2: Tuple[int, ...]
     FIRST: ClassVar[int] = 0x28
     SIZE: ClassVar[int] = 24
     COUNT: ClassVar[int] = 8
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> 'Effect':
+    def from_bytes(cls, data: bytes) -> Effect:
         id = struct.unpack_from('<I', data, 0x00)[0]
         raw_amount = struct.unpack_from('<I', data, 0x04)[0]
         unknown1 = struct.unpack_from('<I', data, 0x08)[0]
@@ -37,7 +39,7 @@ class Effect:
 
     @property
     def amount(self) -> str:
-        return self.raw_amount
+        return f'{self.raw_amount}'
 
     def db_hex(self) -> str:
         return EffectsDB[self.effect_id].__repr__()
@@ -93,7 +95,7 @@ class Item:
     STRUCT_SIZE: ClassVar[int] = 0x148
 
     @classmethod
-    def from_process(cls, process: pymem.Pymem, index: int) -> 'Item':
+    def from_process(cls, process: pymem.Pymem, index: int) -> Item:
         address = (process.base_address + Item.ITEMS_START +
                    index * Item.STRUCT_SIZE)
         data = process.read_bytes(address, Item.STRUCT_SIZE)
@@ -103,7 +105,7 @@ class Item:
     def from_bytes(cls,
                    data: bytes,
                    address: int = 0,
-                   process: Optional[pymem.Pymem] = None):
+                   process: Optional[pymem.Pymem] = None) -> Item:
         id = struct.unpack_from('<II', data, 0x00)
         if id[0] != id[1]:
             raise Exception('Item IDs do not match')
@@ -118,7 +120,7 @@ class Item:
         status = struct.unpack_from('<I', data, 0x10)[0]
         locked = bool(status & 0x02)
 
-        slot_pos = struct.unpack_from('<II', data, 0x14)
+        slot_pos = cast(Tuple[int, int], struct.unpack_from('<II', data, 0x14))
 
         effects = []
         for i in range(Effect.COUNT):
@@ -133,12 +135,15 @@ class Item:
         magic = struct.unpack_from('<I', data, 0xF0)[0]
         resist = struct.unpack_from('<I', data, 0xF4)[0]
 
-        job1 = struct.unpack_from('<IIB', data, 0x0110)
-        job2 = struct.unpack_from('<IIB', data, 0x011C)
+        job1 = cast(Tuple[int, int, int],
+                    struct.unpack_from('<IIB', data, 0x0110))
+        job2 = cast(Tuple[int, int, int],
+                    struct.unpack_from('<IIB', data, 0x011C))
 
-        skills = struct.unpack_from('<IIII', data, 0x0128)
+        skills = cast(Tuple[int, int, int, int],
+                      struct.unpack_from('<IIII', data, 0x0128))
 
-        summon = struct.unpack_from('<II', data, 0x013C)
+        summon = cast(Tuple[int, int], struct.unpack_from('<II', data, 0x013C))
 
         return Item(process, address, data, id[0], amount, level,
                     original_level, rarity, status, slot_pos, effects, attack,
@@ -167,7 +172,7 @@ class Item:
         return bool(self.status & 0x02)
 
     @locked.setter
-    def locked(self, locked: bool):
+    def locked(self, locked: bool) -> None:
         self.status = (self.status & ~0x02) | 0x02 * locked
         if self._process:
             self._process.write_uchar(self._address + 0x10, self.status)
@@ -214,7 +219,7 @@ class Item:
 class Inventory:
     items: List[Item]
 
-    def save(self, filename: Path):
+    def save(self, filename: Path) -> None:
         with filename.open('wb') as f:
             f.write(struct.pack('<II', 0, len(self.items)))
             for item in self.items:
@@ -222,12 +227,16 @@ class Inventory:
 
     def filter(self) -> List[Item]:
         results = []
-        weapon_skills = defaultdict(bool)
-        acc_skills = defaultdict(bool)
+        weapon_skills: Dict[int, bool] = defaultdict(bool)
+        acc_skills: Dict[int, bool] = defaultdict(bool)
 
         not_kept = []
 
         for item in self.items:
+            db_item = ItemsDB.get(item.item_id)
+            if db_item is None:
+                continue
+
             keep = item.should_keep()
             if keep:
                 results.append(item)
@@ -236,7 +245,7 @@ class Inventory:
 
             for skill in item.skills:
                 if skill != 0:
-                    item_type = ItemsDB.get(item.item_id).slots
+                    item_type = db_item.slots
                     if 'Weapon' in item_type:
                         weapon_skills[skill] |= keep
                     elif 'Accessory' in item_type:
@@ -262,7 +271,7 @@ class Inventory:
         return results
 
     @classmethod
-    def from_process(cls):
+    def from_process(cls) -> Inventory:
         pm = pymem.Pymem('SOPFFO.exe')
         items = []
         for i in range(5500):
@@ -270,14 +279,14 @@ class Inventory:
         return cls(items)
 
     @classmethod
-    def from_file(cls, filename: Path):
+    def from_file(cls, filename: Path) -> Inventory:
         items = []
         with filename.open('rb') as f:
             buffer = f.read()
             index = 0
             _, size = struct.unpack('<II', buffer[0:8])
             index += 8
-            for item in range(size):
+            for _ in range(size):
                 item = Item.from_bytes(buffer[index:index + Item.STRUCT_SIZE],
                                        address=index)
                 items.append(item)

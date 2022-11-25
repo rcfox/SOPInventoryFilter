@@ -1,7 +1,7 @@
 from memory import Inventory
 
 
-def diff(a, b):
+def diff(a: str, b: str) -> str:
     result = []
     for ac, bc in zip(a, b):
         if ac == bc:
@@ -11,7 +11,7 @@ def diff(a, b):
     return ''.join(result)
 
 
-def main():
+def main() -> None:
     print(
         'Please ensure that Stranger of Paradise: Final Fantasy Origin is running and you have loaded your save.'
     )

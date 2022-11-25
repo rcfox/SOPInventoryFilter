@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import csv
 import struct
 import textwrap
 from dataclasses import dataclass, asdict, field
-from typing import ClassVar, Dict, Tuple, List
+from typing import (cast, ClassVar, Dict, Generator, Tuple, List, TypeVar,
+                    Generic, Optional, Type)
 from pathlib import Path
 from pprint import pprint, pformat
 
@@ -46,8 +49,14 @@ SLOT_TYPES: Dict[int, str] = {0: 'Body', 2: 'Body-Leg', 16: 'Body-Head'}
 @dataclass
 class DBEntry:
     buffer: bytes
+    id: int
+    SIZE: ClassVar[int] = 0
 
-    def values(self, format='<I'):
+    @classmethod
+    def path(cls) -> Path:
+        return INSTALL_DIR
+
+    def values(self, format: str = '<I') -> List[Tuple[int, ...]]:
         size = struct.calcsize(format)
         padding = b'\x00' * (size - len(self.buffer) % size)
         return [(i * size, *x) for i, x in enumerate(
@@ -58,13 +67,16 @@ class DBEntry:
             textwrap.wrap(' '.join(textwrap.wrap(self.buffer.hex(), 2)), 48))
 
     @classmethod
-    def from_bytes(cls, buffer: bytes, index: int):
-        return cls(buffer)
+    def from_bytes(cls, buffer: bytes, index: int) -> DBEntry:
+        return cls(buffer, 0)
+
+    @property
+    def name(self) -> str:
+        return ''
 
 
 @dataclass
 class ItemDBEntry(DBEntry):
-    id: int
     string_id: int
     item_type: int
     slot_type: int
@@ -75,7 +87,7 @@ class ItemDBEntry(DBEntry):
         return INSTALL_DIR / 'database/item_database.bin'
 
     @classmethod
-    def from_bytes(cls, buffer: bytes, index: int):
+    def from_bytes(cls, buffer: bytes, index: int) -> ItemDBEntry:
         item_id = struct.unpack_from('<I', buffer, 0)[0]
         item_type = struct.unpack_from('<H', buffer, 4)[0]
         string_id = struct.unpack_from('<I', buffer, 8)[0]
@@ -111,7 +123,6 @@ class ItemDBEntry(DBEntry):
 
 @dataclass
 class EffectDBEntry(DBEntry):
-    id: int
     string_ids: Tuple[int, int, int, int]
 
     SIZE: ClassVar[int] = 96
@@ -121,10 +132,11 @@ class EffectDBEntry(DBEntry):
         return INSTALL_DIR / 'database/special_bonus_database.bin'
 
     @classmethod
-    def from_bytes(cls, buffer: bytes, index: int):
+    def from_bytes(cls, buffer: bytes, index: int) -> EffectDBEntry:
         effect_id = struct.unpack_from('<I', buffer, 0)[0]
         string_ids = struct.unpack_from('<IIII', buffer, 40)
-        return cls(buffer, effect_id, string_ids)
+        return cls(buffer, effect_id,
+                   cast(Tuple[int, int, int, int], string_ids))
 
     def __repr__(self) -> str:
         return super().__repr__()
@@ -141,7 +153,6 @@ class EffectDBEntry(DBEntry):
 
 @dataclass
 class SkillDBEntry(DBEntry):
-    id: int
     name_id: int
     description_id: int
     source_id: int
@@ -153,7 +164,7 @@ class SkillDBEntry(DBEntry):
         return INSTALL_DIR / 'database/P0030_ability_database.bin'
 
     @classmethod
-    def from_bytes(cls, buffer: bytes, index: int):
+    def from_bytes(cls, buffer: bytes, index: int) -> SkillDBEntry:
         skill_id = struct.unpack_from('<I', buffer, 0)[0]
         name_str_id = struct.unpack_from('<I', buffer, 16)[0]
         description_str_id = struct.unpack_from('<I', buffer, 20)[0]
@@ -180,7 +191,6 @@ class SkillDBEntry(DBEntry):
 
 @dataclass
 class JobDBEntry(DBEntry):
-    id: int
     string_id: int
     class_ids: Tuple[int, int]
     SIZE: ClassVar[int] = 100
@@ -190,11 +200,12 @@ class JobDBEntry(DBEntry):
         return INSTALL_DIR / 'database/P0031_job_database.bin'
 
     @classmethod
-    def from_bytes(cls, buffer: bytes, index: int):
+    def from_bytes(cls, buffer: bytes, index: int) -> JobDBEntry:
         affinity_id = struct.unpack_from('<B', buffer, 12)[0]
         string_id = struct.unpack_from('<I', buffer, 16)[0]
         class_ids = struct.unpack_from('<II', buffer, 20)
-        return cls(buffer, affinity_id, string_id, class_ids)
+        return cls(buffer, affinity_id, string_id,
+                   cast(Tuple[int, int], class_ids))
 
     def __repr__(self) -> str:
         return self.hex()
@@ -205,28 +216,33 @@ class JobDBEntry(DBEntry):
 
     @property
     def classes(self) -> Tuple[str, str]:
-        return tuple(Strings.get(x) for x in self.class_ids)
+        class1, class2 = self.class_ids
+        return (Strings.get(class1), Strings.get(class2))
 
 
-@dataclass
-class Database:
-    entry_type: type
-    entries: Dict[int, DBEntry] = field(default_factory=dict)
+DBEntryType = TypeVar('DBEntryType', ItemDBEntry, EffectDBEntry, SkillDBEntry,
+                      JobDBEntry)
+#DBEntryType = TypeVar('DBEntryType', bound=DBEntry)
 
-    def __getitem__(self, key):
-        if key == 0:
-            return None
+
+class Database(Generic[DBEntryType]):
+
+    def __init__(self, entry_type: Type[DBEntryType]) -> None:
+        self.entry_type: Type[DBEntryType] = entry_type
+        self.entries: Dict[int, DBEntryType] = {}
+
+    def __getitem__(self, key: int) -> DBEntryType:
         return self.entries[key]
 
-    def get(self, key):
+    def get(self, key: int) -> Optional[DBEntryType]:
         return self.entries.get(key)
 
-    def by_name(self, key):
+    def by_name(self, key: str) -> Generator[DBEntryType, None, None]:
         for entry in self.entries.values():
             if entry.name == key:
                 yield entry
 
-    def load(self):
+    def load(self) -> Database[DBEntryType]:
         self.entries.clear()
         with self.entry_type.path().open('rb') as f:
             buffer = f.read()
@@ -243,7 +259,7 @@ class Database:
 
         return self
 
-    def as_csv(self, filename):
+    def to_csv(self, filename: str) -> None:
         with open(filename, 'w', encoding='utf-8', newline='') as f:
             csv_w = csv.writer(f)
             for entry in self.entries.values():
@@ -260,17 +276,17 @@ class Strings:
     files: ClassVar[Dict[str, 'Strings']] = {}
 
     @classmethod
-    def load_language(cls, language: str):
+    def load_language(cls, language: str) -> None:
         for path in Strings.language_files(language):
             file = Strings.load_file(path)
             cls.files[file.filename] = file
 
     @classmethod
-    def language_files(cls, language: str) -> List[Path]:
+    def language_files(cls, language: str) -> Generator[Path, None, None]:
         return cls.base_path.glob(f'*_{language}.bin')
 
     @classmethod
-    def load_file(cls, filename: Path) -> 'Strings':
+    def load_file(cls, filename: Path) -> Strings:
         with filename.open('rb') as f:
             data = f.read()
         offset = 0
@@ -292,8 +308,6 @@ class Strings:
             strings = Strings.files[filename].strings
             if string_id in strings:
                 return strings[string_id]
-        return None
-
         raise Exception(f'String ID {string_id} not found.')
 
 
