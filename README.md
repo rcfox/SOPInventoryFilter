@@ -21,3 +21,9 @@ You should see a folder with a bunch of letters and numbers in the name. Exit th
 See the `config.ini` file included with the release. There are instructions for each section there. An item will be kept if it meets any of the criteria provided.
 
 Note: The `[Effects]` section includes all of the *technically possible* values, as found in the game's data files. Not all of them actually appear on items that drop in the game as of yet. When in doubt, just leave the line commented out by putting a `#` at the beginning of the line.
+
+
+## Acknowledgements
+
+* [The Save Wizard team's notes on the game data files](https://docs.google.com/spreadsheets/d/1GjMSRSg4gsZYfNqqbZSseIUX4wItErNgjvKNp50D3zM/edit?usp=sharing) were a great starting point for me.
+
