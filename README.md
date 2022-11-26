@@ -6,6 +6,10 @@ Each item effect can be given a minimum level to keep. If an item has any effect
 
 This tool will read the memory of the game's process to get the item details and set item locks. So make sure to have the game running, and your save loaded before running the tool, or it won't work.
 
+## Download
+
+You can download an executable version from the [releases page](https://github.com/rcfox/SOPInventoryFilter/releases/latest).
+
 ## Back Up Your Save
 
 Since this is still an experimental tool, it is a good idea to back up your save before trying it. I've been using it myself and have not encountered any issues, but it's better to be safe than sorry!
