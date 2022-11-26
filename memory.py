@@ -13,6 +13,9 @@ from database import ItemsDB, EffectsDB, JobsDB
 
 import pymem
 
+class InvalidItemException(Exception):
+    pass
+
 
 @dataclass
 class Effect:
@@ -91,7 +94,7 @@ class Item:
 
     summon: Tuple[int, int]
 
-    ITEMS_START: ClassVar[int] = int(Config['General']['Inventory Offset'], 16)
+    ITEMS_START: ClassVar[int] = 0 # This is gross, but it will be set by Inventory.find_offset() now.
     STRUCT_SIZE: ClassVar[int] = 0x148
 
     @classmethod
@@ -108,7 +111,7 @@ class Item:
                    process: Optional[pymem.Pymem] = None) -> Item:
         id = struct.unpack_from('<II', data, 0x00)
         if id[0] != id[1]:
-            raise Exception('Item IDs do not match')
+            raise InvalidItemException('Item IDs do not match')
 
         amount = struct.unpack_from('<H', data, 0x08)[0]
 
@@ -269,13 +272,47 @@ class Inventory:
                             acc_skills[skill] = True
 
         return results
+        
+    @classmethod
+    def find_offset(cls) -> int:
+        pm = pymem.Pymem('SOPFFO.exe')
+        
+        def scan_back(address: int) -> int:
+            try:
+                while True:
+                    i = Item.from_bytes(pm.read_bytes(address, Item.STRUCT_SIZE))
+                    address -= Item.STRUCT_SIZE
+            except InvalidItemException:
+                return address + Item.STRUCT_SIZE
+        
+        # Look for the potion item ID. Everyone should have this.
+        possible_potions = pm.pattern_scan_module(b'\xe7\x05\x00\x00\xe7\x05\x00\x00', 'SOPFFO.exe', return_multiple=True)
+        for addr in possible_potions:
+            Item.ITEMS_START = scan_back(addr) - pm.base_address
+            try:
+                _ = Inventory.from_process(pm)
+                return Item.ITEMS_START
+            except InvalidItemException:
+                continue
+                
+        raise Exception('Could not find inventory offset!')
 
     @classmethod
-    def from_process(cls) -> Inventory:
-        pm = pymem.Pymem('SOPFFO.exe')
+    def from_process(cls, pm: Optional[pymem.Pymem] = None) -> Inventory:
+        if pm is None:
+            pm = pymem.Pymem('SOPFFO.exe')
+            
+        if Item.ITEMS_START == 0:
+            Item.ITEMS_START = Inventory.find_offset()
+            
         items = []
-        for i in range(5500):
-            items.append(Item.from_process(pm, i))
+        try:
+            for i in range(5500):
+                items.append(Item.from_process(pm, i))
+        except InvalidItemException:
+            if i > 5:
+                print('---', i)
+            raise
         return cls(items)
 
     @classmethod
