@@ -41,4 +41,8 @@ Please ensure that Stranger of Paradise: Final Fantasy Origin is running and you
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(e)
+    input('\n(close)')
