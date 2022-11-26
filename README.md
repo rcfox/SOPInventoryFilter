@@ -10,10 +10,14 @@ This tool will read the memory of the game's process to get the item details and
 
 Since this is still an experimental tool, it is a good idea to back up your save before trying it. I've been using it myself and have not encountered any issues, but it's better to be safe than sorry!
 
-Your save file can be found here: `%USERPROFILE%\Documents\My Games\STRANGER OF PARADISE FINAL FANTASY ORIGIN\EOS\`. You should see a folder with a bunch of letters and numbers in the name. Exit the game, then copy that somewhere else. If you encounter anything strange after running the tool, you can just drop your copy back here.
+Your save file can be found here:
+
+`%USERPROFILE%\Documents\My Games\STRANGER OF PARADISE FINAL FANTASY ORIGIN\EOS\`
+
+You should see a folder with a bunch of letters and numbers in the name. Exit the game, then copy that somewhere else. If you encounter anything strange after running the tool, you can just drop your copy back here.
 
 ## How to Configure
 
-See the `config.ini` file included with the release. There are instructions for each section there.
+See the `config.ini` file included with the release. There are instructions for each section there. An item will be kept if it meets any of the criteria provided.
 
 Note: The `[Effects]` section includes all of the *technically possible* values, as found in the game's data files. Not all of them actually appear on items that drop in the game as of yet. When in doubt, just leave the line commented out by putting a `#` at the beginning of the line.
