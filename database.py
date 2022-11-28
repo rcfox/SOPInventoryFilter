@@ -392,20 +392,6 @@ class Strings:
                 ) VALUES (?, ?, ?)
             ''', ((id, string, filename) for id, string in file.strings.items()))
 
-    def insert_row(self, conn):
-        conn.execute('''
-        INSERT INTO strings (
-            string_id, string
-        ) VALUES (?, ?)
-        ''', (
-            
-        ))
-        
-        owner_id, *_ = conn.execute('SELECT last_insert_rowid()').fetchone()
-        
-        for effect in self.effects:
-            effect.insert_row(conn, owner_id)
-
     @classmethod
     def load_language(cls, language: str) -> None:
         for path in Strings.language_files(language):
