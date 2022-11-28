@@ -21,10 +21,10 @@ class InvalidItemException(Exception):
 class Effect:
     effect_id: int
     raw_amount: int
-    unknown1: Tuple[int, ...]
+    unknown1: bytes
     affinity_level: int
     affinity_type: int
-    unknown2: Tuple[int, ...]
+    unknown2: bytes
     FIRST: ClassVar[int] = 0x28
     SIZE: ClassVar[int] = 24
     COUNT: ClassVar[int] = 8
@@ -33,12 +33,43 @@ class Effect:
     def from_bytes(cls, data: bytes) -> Effect:
         id = struct.unpack_from('<I', data, 0x00)[0]
         raw_amount = struct.unpack_from('<I', data, 0x04)[0]
-        unknown1 = struct.unpack_from('<I', data, 0x08)[0]
+        unknown1 = data[0x08 : 0x0C]
         affinity_level = struct.unpack_from('<B', data, 0x0C)[0]
         affinity_type = struct.unpack_from('<B', data, 0x0D)[0]
-        unknown2 = struct.unpack_from('<BBII', data, 0x0E)
+        unknown2 = data[0x0E : 0x18]
         return cls(id, raw_amount, unknown1, affinity_level, affinity_type,
                    unknown2)
+    
+    @classmethod
+    def create_table(cls, conn):
+        conn.executescript('''
+        DROP TABLE IF EXISTS effect_instances;
+        CREATE TABLE effect_instances (
+            id INTEGER PRIMARY KEY,
+            effect_id INTEGER NOT NULL,
+            owner_id INTEGER NOT NULL,
+            amount INTEGER NOT NULL,
+            affinity_level INTEGER NOT NULL,
+            affinity_type INTEGER NOT NULL,
+            unknown1 BLOB NOT NULL,
+            unknown2 BLOB NOT NULL,
+            FOREIGN KEY (effect_id) REFERENCES effects (id),
+            FOREIGN KEY (owner_id) REFERENCES item_instances (id)
+        );
+        ''')
+
+    def insert_row(self, conn, owner_id: int):
+        conn.execute('''
+        INSERT INTO effect_instances(
+            effect_id, owner_id, amount, 
+            affinity_level, affinity_type,
+            unknown1, unknown2
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            self.effect_id, owner_id, self.raw_amount,
+            self.affinity_level, self.affinity_type,
+            self.unknown1, self.unknown2
+        ))
 
     @property
     def amount(self) -> str:
@@ -151,6 +182,71 @@ class Item:
         return Item(process, address, data, id[0], amount, level,
                     original_level, rarity, status, slot_pos, effects, attack,
                     defense, magic, resist, job1, job2, skills, summon)
+                    
+
+    @classmethod
+    def create_table(cls, conn):
+        conn.executescript('''
+        DROP TABLE IF EXISTS item_instances;
+        CREATE TABLE item_instances (
+            id INTEGER PRIMARY KEY,
+            item_id INTEGER NOT NULL,
+            amount INTEGER NOT NULL,
+            level INTEGER NOT NULL,
+            original_level INTEGER NOT NULL,
+            rarity INTEGER NOT NULL,
+            status INTEGER NOT NULL,
+            slot_pos1 INTEGER NOT NULL,
+            slot_pos2 INTEGER NOT NULL,
+            summon_id INTEGER NOT NULL,
+            summon_level INTEGER NOT NULL,
+            FOREIGN KEY (item_id) REFERENCES items (id)
+        );
+        
+        DROP TABLE IF EXISTS item_skills;
+        CREATE TABLE item_skills (
+            id INTEGER PRIMARY KEY,
+            owner_id INTEGER NOT NULL,
+            skill INTEGER NOT NULL,
+            FOREIGN KEY (owner_id) REFERENCES item_instances (id)
+        );
+        
+        DROP TABLE IF EXISTS item_jobs;
+        CREATE TABLE item_jobs (
+            id INTEGER PRIMARY KEY,
+            owner_id INTEGER NOT NULL,
+            job_id INTEGER NOT NULL,
+            job_level INTEGER NOT NULL,
+            job_type INTEGER NOT NULL,
+            FOREIGN KEY (owner_id) REFERENCES item_instances (id),
+            FOREIGN KEY (job_id) REFERENCES jobs (id)
+        );
+        ''')
+
+    def insert_row(self, conn):
+        conn.execute('''
+        INSERT INTO item_instances(
+            item_id, amount, level, original_level, rarity, status,
+            slot_pos1, slot_pos2, summon_id, summon_level
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            self.item_id, self.amount, self.level, self.original_level, 
+            self.rarity, self.status, self.slot_pos[0], self.slot_pos[1],
+            self.summon[0], self.summon[1]
+        ))
+        
+        owner_id, *_ = conn.execute('SELECT last_insert_rowid()').fetchone()
+        
+        for effect in self.effects:
+            effect.insert_row(conn, owner_id)
+            
+        conn.executemany('''
+            INSERT INTO item_skills (owner_id, skill) VALUES (?, ?)
+        ''', [(owner_id, skill) for skill in self.skills if skill != 0])
+        
+        conn.executemany('''
+            INSERT INTO item_jobs (owner_id, job_id, job_level, job_type) VALUES (?, ?, ?, ?)
+        ''', [(owner_id, *job) for job in [self.job1, self.job2] if job[0] != 0])
 
     @property
     def name(self) -> str:
