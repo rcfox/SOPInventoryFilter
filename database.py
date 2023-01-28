@@ -69,6 +69,9 @@ class DBEntry:
     @classmethod
     def from_bytes(cls, buffer: bytes, index: int) -> DBEntry:
         return cls(buffer, 0)
+        
+    def to_bytes(self) -> bytes:
+        return self.buffer
 
     @property
     def name(self) -> str:
@@ -216,6 +219,9 @@ class SkillDBEntry(DBEntry):
         source_str_id = struct.unpack_from('<I', buffer, 24)[0]
         return cls(buffer, skill_id, name_str_id, description_str_id,
                    source_str_id)
+                   
+    def to_bytes(self) -> bytes:
+        return self.buffer[0:16] + struct.pack('<I', self.name_id) + self.buffer[20:]
 
     @classmethod
     def create_table(cls, conn):
@@ -240,6 +246,7 @@ class SkillDBEntry(DBEntry):
         ''', (self.id, self.name_id, self.description_id, self.source_id))
         
     def __repr__(self) -> str:
+        return f'<Skill: {self.name}>'
         return '\n'.join(
             textwrap.wrap(' '.join(textwrap.wrap(self.buffer.hex(), 2)), 48))
 
@@ -307,7 +314,28 @@ class JobDBEntry(DBEntry):
     def classes(self) -> Tuple[str, str]:
         class1, class2 = self.class_ids
         return (Strings.get(class1), Strings.get(class2))
+        
 
+@dataclass
+class TestDBEntry(DBEntry):
+    job_id: int
+    unknown: Tuple[int, ...]
+    a: int
+    SIZE: ClassVar[int] = 128
+
+    @classmethod
+    def path(cls) -> Path:
+        return INSTALL_DIR / 'database/P0032_ability_param_database.bin'
+
+    @classmethod
+    def from_bytes(cls, buffer: bytes, index: int) -> JobDBEntry:
+        unknown = struct.unpack_from('<IIII', buffer, 0)
+        a = struct.unpack_from('<I', buffer, 0)[0]
+        job_id = struct.unpack_from('<I', buffer, 16)[0]
+        return cls(buffer, index, job_id, unknown, a)
+
+    def __repr__(self) -> str:
+        return self.hex()
 
 DBEntryType = TypeVar('DBEntryType', ItemDBEntry, EffectDBEntry, SkillDBEntry,
                       JobDBEntry)
@@ -350,6 +378,12 @@ class Database(Generic[DBEntryType]):
             index += size
 
         return self
+        
+    def save(self, filename: Path) -> None:
+        with filename.open('wb') as f:
+            f.write(struct.pack('<II', 537141760, len(self.entries)))
+            for entry in self.entries.values():
+                f.write(entry.to_bytes())
 
     def to_csv(self, filename: str) -> None:
         with open(filename, 'w', encoding='utf-8', newline='') as f:
@@ -373,6 +407,15 @@ class Strings:
     strings: Dict[int, str]
     base_path: ClassVar[Path] = INSTALL_DIR / 'string'
     files: ClassVar[Dict[str, 'Strings']] = {}
+
+    @classmethod
+    def by_string(cls, key: str) -> Generator[int, None, None]:
+        for filename in Strings.files.keys():
+            strings = Strings.files[filename].strings
+            for string_id, string in strings.items():
+                if string == key:
+                    yield string_id
+
     
     @classmethod
     def create_table(cls, conn):
@@ -416,6 +459,13 @@ class Strings:
             strings[string_id] = string
             offset += length * 2 + 8
         return cls('_'.join(filename.stem.split('_')[:-1]), strings)
+        
+    def save_file(self, filename: Path) -> None:
+        with filename.open('wb') as f:
+            for string_id, string in self.strings.items():
+                length = len(string) + 1
+                f.write(struct.pack(f'<II{length*2}s',
+                    string_id, length, (string+'\0').encode('utf-16le')))
 
     @classmethod
     def get(cls, string_id: int) -> str:
@@ -433,3 +483,4 @@ ItemsDB = Database(ItemDBEntry).load()
 EffectsDB = Database(EffectDBEntry).load()
 SkillsDB = Database(SkillDBEntry).load()
 JobsDB = Database(JobDBEntry).load()
+TestDB = Database(TestDBEntry).load()
