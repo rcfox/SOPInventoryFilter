@@ -152,7 +152,6 @@ class Item:
         rarity = struct.unpack_from('<B', data, 0x0C)[0]
 
         status = struct.unpack_from('<I', data, 0x10)[0]
-        locked = bool(status & 0x02)
 
         slot_pos = cast(Tuple[int, int], struct.unpack_from('<II', data, 0x14))
 
@@ -265,6 +264,10 @@ class Item:
         values.pop('_address')
         values.pop('_process')
         return pformat(values)
+        
+    def set_status(self, status):
+        if self._process:
+            self._process.write_uchar(self._address + 0x10, status)
 
     @property
     def locked(self) -> bool:
@@ -273,8 +276,16 @@ class Item:
     @locked.setter
     def locked(self, locked: bool) -> None:
         self.status = (self.status & ~0x02) | 0x02 * locked
-        if self._process:
-            self._process.write_uchar(self._address + 0x10, self.status)
+        self.set_status(self.status)
+
+    @property        
+    def is_new(self) -> bool:
+        return bool(self.status & 0x01)
+        
+    @is_new.setter
+    def is_new(self, new: bool) -> None:
+        self.status = (self.status & ~0x01) | 0x01 * new
+        self.set_status(self.status)
 
     def hex(self) -> str:
         return '\n'.join(
