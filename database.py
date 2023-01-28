@@ -90,7 +90,7 @@ class ItemDBEntry(DBEntry):
     string_id: int
     item_type: int
     slot_type: int
-    SIZE: ClassVar[int] = 388
+    SIZE: ClassVar[int] = 392
 
     @classmethod
     def path(cls) -> Path:
