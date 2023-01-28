@@ -205,7 +205,7 @@ class SkillDBEntry(DBEntry):
     description_id: int
     source_id: int
 
-    SIZE: ClassVar[int] = 104
+    SIZE: ClassVar[int] = 100
 
     @classmethod
     def path(cls) -> Path:
@@ -214,9 +214,9 @@ class SkillDBEntry(DBEntry):
     @classmethod
     def from_bytes(cls, buffer: bytes, index: int) -> SkillDBEntry:
         skill_id = struct.unpack_from('<I', buffer, 0)[0]
-        name_str_id = struct.unpack_from('<I', buffer, 16)[0]
-        description_str_id = struct.unpack_from('<I', buffer, 20)[0]
-        source_str_id = struct.unpack_from('<I', buffer, 24)[0]
+        name_str_id = struct.unpack_from('<I', buffer, 12)[0]
+        description_str_id = struct.unpack_from('<I', buffer, 16)[0]
+        source_str_id = struct.unpack_from('<I', buffer, 20)[0]
         return cls(buffer, skill_id, name_str_id, description_str_id,
                    source_str_id)
                    
