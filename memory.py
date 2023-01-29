@@ -267,7 +267,7 @@ class Item:
         
     def set_status(self, status):
         if self._process:
-            self._process.write_uchar(self._address + 0x10, status)
+            self._process.write_uint(self._address + 0x10, status)
 
     @property
     def locked(self) -> bool:
