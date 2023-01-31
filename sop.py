@@ -140,8 +140,11 @@ Please ensure that Stranger of Paradise: Final Fantasy Origin is running and you
     inv = Inventory.from_process()
     #inv = Inventory.from_file(Path('inv.bin'))
     
-    for item in inv.filter():
+    for item in inv.items:
         item.set_marker(Item.OUTPUT_MARKER)
+    
+    for item in inv.filter():
+        item.unset_marker(Item.OUTPUT_MARKER)
         
     inv.save(Path('inv.bin'))
     create_db(inv)
