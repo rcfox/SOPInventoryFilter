@@ -1,3 +1,4 @@
+from typing import Optional
 from memory import Inventory, Item, Effect
 from collections import defaultdict
 from database import Database, Strings, ItemsDB
@@ -57,6 +58,19 @@ def unlock_all() -> None:
         item.locked = False
         
 @main.command()
+@click.argument('marker', required=False, default=None)
+def clear_markers(marker: Optional[int]) -> None:
+    inv = Inventory.from_process()
+    if marker is None:
+        print('Clearing all markers.')    
+        for item in inv.items:        
+            item.clear_markers()
+    else:
+        print(f'Clearing all marker #{marker}.')
+        for item in inv.items:
+            item.unset_marker(int(marker))
+        
+@main.command()
 def upgrades() -> None:   
     inv = Inventory.from_process()#Inventory.from_file(Path('inv.bin'))
     statuses = defaultdict(list)
@@ -71,14 +85,13 @@ def upgrades() -> None:
         if ItemsDB[item.item_id].slots == '2-Slot Armour':
             item_types['Head'].append(item)
             item_types['Leg'].append(item)
-        if item.locked and not bool(item.status & 1):
+        if Item.INPUT_MARKER in item.get_markers():
             upgrade.append(item)
             
     possible_upgrades = []
     for upgrade_item in upgrade:
-        upgrade_item.locked = False
         for item in item_types[upgrade_item.type]:
-            if item.locked:
+            if Item.INPUT_MARKER in item.get_markers():
                 continue
             for upgrade_eff in upgrade_item.effects:
                 for item_eff in item.effects:
@@ -99,7 +112,7 @@ def upgrades() -> None:
         for effect, items in effects.items():
             print('--', effect)
             for item, item_eff in sorted(items, key=lambda i: repr(i[1]), reverse=True):
-                item.locked = True
+                item.set_marker(Item.OUTPUT_MARKER)
                 print(f'---- {item.name} (lvl{item.level}) - {repr(item_eff)}')
                 
     #for upgrade_item, upgrade_eff, item, item_eff in possible_upgrades:
@@ -127,13 +140,8 @@ Please ensure that Stranger of Paradise: Final Fantasy Origin is running and you
     inv = Inventory.from_process()
     #inv = Inventory.from_file(Path('inv.bin'))
     
-    print('Unlocking all items...')
-    for item in inv.items:
-        item.locked = False
-
-    print('Locking items to be kept...')
     for item in inv.filter():
-        item.locked = True
+        item.set_marker(Item.OUTPUT_MARKER)
         
     inv.save(Path('inv.bin'))
     create_db(inv)
