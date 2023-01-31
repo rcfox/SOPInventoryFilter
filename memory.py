@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import struct
 import textwrap
 from collections import defaultdict
@@ -16,6 +17,8 @@ import pymem
 class InvalidItemException(Exception):
     pass
 
+class InvalidMarkerException(Exception):
+    pass
 
 @dataclass
 class Effect:
@@ -124,14 +127,14 @@ class Item:
     skills: Tuple[int, int, int, int]
 
     summon: Tuple[int, int]
+    
+    INPUT_MARKER: ClassVar[int] = Config['General'].getint('Input Marker')
+    OUTPUT_MARKER: ClassVar[int] = Config['General'].getint('Output Marker')
 
-    ITEMS_START: ClassVar[int] = 0 # This is gross, but it will be set by Inventory.find_offset() now.
     STRUCT_SIZE: ClassVar[int] = 0x148
 
     @classmethod
-    def from_process(cls, process: pymem.Pymem, index: int) -> Item:
-        address = (process.base_address + Item.ITEMS_START +
-                   index * Item.STRUCT_SIZE)
+    def from_process(cls, process: pymem.Pymem, address: int) -> Item:
         data = process.read_bytes(address, Item.STRUCT_SIZE)
         return cls.from_bytes(data, address=address, process=process)
 
@@ -143,6 +146,8 @@ class Item:
         id = struct.unpack_from('<II', data, 0x00)
         if id[0] != id[1]:
             raise InvalidItemException('Item IDs do not match')
+        if ItemsDB.get(id[0]) is None:
+            return None
 
         amount = struct.unpack_from('<H', data, 0x08)[0]
 
@@ -277,6 +282,10 @@ class Item:
     def locked(self, locked: bool) -> None:
         self.status = (self.status & ~0x02) | 0x02 * locked
         self.set_status(self.status)
+        
+    @property
+    def is_in_inventory(self) -> bool:
+        return bool(self.status & 0x08)
 
     @property        
     def is_new(self) -> bool:
@@ -285,6 +294,34 @@ class Item:
     @is_new.setter
     def is_new(self, new: bool) -> None:
         self.status = (self.status & ~0x01) | 0x01 * new
+        self.set_status(self.status)
+        
+    def get_markers(self) -> Optional[int]:
+        bits = bin((self.status >> 8) & 0xff)
+        for i in range(1, len(bits)):
+            if bits[-i] == '1':
+                yield i
+            elif bits[-i] == 'b':
+                return
+        
+    def clear_markers(self) -> None:
+        self.status = self.status & 0xffff00ff
+        self.set_status(self.status)
+            
+    def set_marker(self, marker: int) -> None:
+        if marker < 1 or marker > 8:
+            raise InvalidMarkerException(marker)
+            
+        bit = 2**(marker - 1) << 8
+        self.status = self.status | bit
+        self.set_status(self.status)
+        
+    def unset_marker(self, marker: int) -> None:
+        if marker < 1 or marker > 8:
+            raise InvalidMarkerException(marker)
+            
+        bit = 2**(marker - 1) << 8
+        self.status = self.status & ~bit
         self.set_status(self.status)
 
     def hex(self) -> str:
@@ -409,17 +446,24 @@ class Inventory:
         if pm is None:
             pm = pymem.Pymem('SOPFFO.exe')
             
-        if Item.ITEMS_START == 0:
-            Item.ITEMS_START = Inventory.find_offset()
+        # Addresses discovered with:
+        # a = pm.pattern_scan_module(b'([^\\x00]...|.[^\\x00]..)\\1..[^\\x00][^\\x00]', 'SOPFFO.exe', return_multiple=True)
+        # b = [(x, ItemsDB.get(pm.read_uint(x))) for x in a]
+        # c = [x for x in b if x[1] and x[1].name]
+        # inv = [Item.from_bytes(pm.read_bytes(x, Item.STRUCT_SIZE), address=x, process=pm) for x, _ in c]
             
         items = []
-        try:
-            for i in range(5500):
-                items.append(Item.from_process(pm, i))
-        except InvalidItemException:
-            if i > 5:
-                print('---', i)
-            raise
+        for i in range(600):
+            address = pm.base_address + 68785416 + i * Item.STRUCT_SIZE
+            item = Item.from_process(pm, address)
+            if item and item.is_in_inventory:
+                items.append(item)
+        for i in range(5500):
+            address = pm.base_address + 69966560 + i * Item.STRUCT_SIZE
+            item = Item.from_process(pm, address)
+            if item and item.is_in_inventory:
+                items.append(item)
+        
         return cls(items)
 
     @classmethod
