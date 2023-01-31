@@ -39,6 +39,12 @@ ITEM_TYPES: Dict[int, str] = {
     48: 'Limit Release',
     49: 'Unlock',
     6948: 'Crest',
+    7214: 'Gun',
+    7470: 'Gun',
+    7726: 'Gun',
+    7982: 'Gun',
+    8238: 'Gun',
+    
 }
 
 # Only used by body armor, indicates if another slot is used by the item.
@@ -142,7 +148,7 @@ class ItemDBEntry(DBEntry):
         if self.type in ('Head', 'Arm', 'Leg', 'Foot'):
             return '1-Slot Armour'
         if self.type in ('Staff', 'Greatsword', 'Katana', 'Axe', 'Knuckles',
-                         'Dagger', 'Lance'):
+                         'Dagger', 'Lance', 'Gun'):
             return '2-Hand Weapon'
         if self.type in ('Sword', 'Mace'):
             return '1-Hand Weapon'
